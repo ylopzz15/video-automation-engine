@@ -1,0 +1,48 @@
+title: "AVIA Documentos Test"
+
+output:
+  width: 1920
+  height: 1080
+  fps: 30
+  format: mp4
+  path: ./output/avia-documentos.mp4
+
+playwright:
+  slowMo: 50
+  highlightClicks: true
+  showCursor: true
+  screenshotOnComplete: true
+  headless: true
+
+  viewport:
+    width: 1920
+    height: 1080
+
+scenes:
+  - id: documentos
+    steps:
+      - action: goto
+        url: https://avia1.com/dashboard
+
+      - action: wait
+        duration: 3000
+
+      - action: fill
+        selector: "#email"
+        value: "yael.villarreal+prueba@optimen.com.mx"
+
+      - action: fill
+        selector: "#password"
+        value: "Djye?1509"
+
+      - action: click
+        selector: "button[type='submit']"
+
+      - action: wait
+        duration: 8000
+
+      - action: click
+        selector: "text=Documentos"
+
+      - action: wait
+        duration: 5000

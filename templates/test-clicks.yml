@@ -1,0 +1,48 @@
+title: "Cursor and Scroll Test"
+
+output:
+  width: 1920
+  height: 1080
+  fps: 30
+  format: mp4
+  path: ./output/cursor-scroll-test.mp4
+
+playwright:
+  slowMo: 50
+  highlightClicks: true
+  showCursor: true
+  screenshotOnComplete: true
+  headless: true
+
+  viewport:
+    width: 1920
+    height: 1080
+
+scenes:
+  - id: landing-demo
+    steps:
+      - action: goto
+        url: https://playwright.dev
+
+      - action: wait
+        duration: 1500
+
+      - action: click
+        selector: "a[href='/docs/intro']"
+
+      - action: wait
+        duration: 1000
+
+      - action: scroll
+        y: 1200
+        duration: 2500
+
+      - action: wait
+        duration: 1000
+
+      - action: scroll
+        y: 1200
+        duration: 2500
+
+      - action: wait
+        duration: 1000

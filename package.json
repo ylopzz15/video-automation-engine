@@ -1,0 +1,24 @@
+{
+  "name": "video-automation-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Framework para generación automática de videos de producto",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -b packages/config packages/core packages/engine-playwright packages/engine-ffmpeg",
+    "dev": "tsc --build --watch packages/*/tsconfig.json",
+    "lint": "eslint packages/*/src --ext .ts",
+    "clean": "rimraf packages/*/dist"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "eslint": "^8.56.0",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
