@@ -29,11 +29,11 @@ scenes:
 
       - action: fill
         selector: "#email"
-        value: "yael.villarreal+prueba@optimen.com.mx"
+        value: "correo"
 
       - action: fill
         selector: "#password"
-        value: "Djye?1509"
+        value: "contraseña"
 
       - action: click
         selector: "button[type='submit']"
