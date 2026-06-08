@@ -13,6 +13,15 @@ export interface FFmpegEngineOptions {
   extraArgs?: string[];
   /** Sobreescribir archivo de salida sin preguntar */
   overwrite?: boolean;
+  /** Directorio raíz del proyecto (para resolver frames/) */
+  projectRoot?: string;
+}
+
+interface FrameConfig {
+  image: string;
+  totalWidth: number;
+  totalHeight: number;
+  screen: { x: number; y: number; width: number; height: number };
 }
 
 export class FFmpegEngine extends Engine {
@@ -25,6 +34,7 @@ export class FFmpegEngine extends Engine {
       ffmpegPath: options.ffmpegPath ?? 'ffmpeg',
       extraArgs: options.extraArgs ?? [],
       overwrite: options.overwrite ?? true,
+      projectRoot: options.projectRoot ?? process.cwd(),
     };
   }
 
@@ -39,7 +49,18 @@ export class FFmpegEngine extends Engine {
     const outputDir = path.dirname(outputPath);
     fs.mkdirSync(outputDir, { recursive: true });
 
-    await this.runFFmpeg(concatFilePath, outputPath);
+    // Paso 1: concatenar escenas en video intermedio
+    const frameConfig = this.resolveFrame(ctx);
+    const rawVideoPath = frameConfig
+      ? path.join(ctx.workDir, 'raw-concat.mp4')
+      : outputPath;
+
+    await this.runConcat(concatFilePath, rawVideoPath);
+
+    // Paso 2: si hay frame, superponer el video en el marco del dispositivo
+    if (frameConfig) {
+      await this.applyFrame(rawVideoPath, outputPath, frameConfig);
+    }
 
     if (!fs.existsSync(outputPath)) {
       throw new Error(`FFmpeg did not produce output file: ${outputPath}`);
@@ -55,16 +76,95 @@ export class FFmpegEngine extends Engine {
   }
 
   /**
-   * Obtiene los SceneResult[] del contexto del pipeline.
-   * PlaywrightEngine los almacena en ctx.metadata.sceneResults
-   * y los paths de video en ctx.assets['scene-videos'].
+   * Resuelve la configuración de frame si está definida en el config.
+   * Busca frames/optimized/{frame}.png (pre-procesado por prepare-frames).
    */
+  private resolveFrame(ctx: PipelineContext): FrameConfig | null {
+    const frameName = (ctx.config as any).frame;
+    if (!frameName) return null;
+
+    const framesDir = path.join(this.options.projectRoot, 'frames');
+    const framesJsonPath = path.join(framesDir, 'frames.json');
+
+    if (!fs.existsSync(framesJsonPath)) {
+      throw new Error(`frames/frames.json not found at ${framesJsonPath}`);
+    }
+
+    const framesData = JSON.parse(fs.readFileSync(framesJsonPath, 'utf-8'));
+    const config = framesData[frameName];
+
+    if (!config) {
+      throw new Error(`Frame "${frameName}" not found in frames/frames.json`);
+    }
+
+    // Usa la versión optimizada (pre-procesada por npm run prepare-frames)
+    const optimizedPath = path.join(framesDir, 'optimized', config.image);
+    const originalPath = path.join(framesDir, config.image);
+    const imagePath = fs.existsSync(optimizedPath) ? optimizedPath : originalPath;
+
+    if (!fs.existsSync(imagePath)) {
+      throw new Error(`Frame image not found: ${imagePath}. Run: npm run prepare-frames`);
+    }
+
+    return {
+      image: imagePath,
+      totalWidth: config.totalWidth,
+      totalHeight: config.totalHeight,
+      screen: config.screen,
+    };
+  }
+
+  /**
+   * Aplica el marco de dispositivo sobre el video.
+   * Estrategia: plantilla como fondo (input 0), video posicionado en el hueco (input 1).
+   * La isla dinámica y bordes del frame ya son opacos en el PNG y no se modifican.
+   */
+  private async applyFrame(
+    inputVideo: string,
+    outputPath: string,
+    frame: FrameConfig,
+  ): Promise<void> {
+    const { screen, image } = frame;
+
+    // input 0: plantilla PNG (fondo con el marco del dispositivo)
+    // input 1: video grabado (se escala y posiciona en el hueco de la pantalla)
+    const filterComplex =
+      `[1:v]scale=${screen.width}:${screen.height}[vid];` +
+      `[0:v][vid]overlay=${screen.x}:${screen.y}:eof_action=repeat[out]`;
+
+    const args: string[] = [];
+
+    if (this.options.overwrite) {
+      args.push('-y');
+    }
+
+    args.push(
+      '-i', image,
+      '-i', inputVideo,
+      '-filter_complex', filterComplex,
+      '-map', '[out]',
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-pix_fmt', 'yuv420p',
+      '-shortest',
+      outputPath,
+    );
+
+    try {
+      await execFileAsync(this.options.ffmpegPath, args, {
+        maxBuffer: 10 * 1024 * 1024,
+      });
+    } catch (err: any) {
+      const message = err.stderr || err.message || 'Unknown FFmpeg error';
+      throw new Error(`FFmpeg frame overlay failed:\n${message}`);
+    }
+  }
+
   private getSceneResults(ctx: PipelineContext): SceneResult[] {
     if (ctx.metadata.sceneResults && Array.isArray(ctx.metadata.sceneResults)) {
       return ctx.metadata.sceneResults as SceneResult[];
     }
 
-    // Fallback: reconstruir desde assets si no hay metadata estructurada
     const raw = ctx.assets.get('scene-videos');
     if (!raw) {
       throw new Error(
@@ -81,10 +181,6 @@ export class FFmpegEngine extends Engine {
     }));
   }
 
-  /**
-   * Verifica que cada escena tenga un archivo de video existente en disco.
-   * Lanza error descriptivo con la lista de escenas faltantes.
-   */
   private validateSceneVideos(scenes: SceneResult[]): void {
     if (scenes.length === 0) {
       throw new Error('No scenes to concatenate. Pipeline produced zero scene results.');
@@ -107,11 +203,6 @@ export class FFmpegEngine extends Engine {
     }
   }
 
-  /**
-   * Genera el archivo concat.txt para el demuxer de FFmpeg.
-   * Formato: file '/ruta/absoluta/a/scene.webm'
-   * Nota: FFmpeg requiere barras normales y comillas simples escapadas.
-   */
   private writeConcatFile(scenes: SceneResult[], workDir: string): string {
     const concatPath = path.join(workDir, 'concat.txt');
 
@@ -124,10 +215,6 @@ export class FFmpegEngine extends Engine {
     return concatPath;
   }
 
-  /**
-   * Resuelve la ruta final del video de salida.
-   * Si la ruta del config es relativa, se resuelve desde workDir.
-   */
   private resolveOutputPath(ctx: PipelineContext): string {
     const configPath = ctx.config.output.path;
 
@@ -139,10 +226,9 @@ export class FFmpegEngine extends Engine {
   }
 
   /**
-   * Ejecuta FFmpeg para concatenar los videos de escena en el output final.
-   * Usa el concat demuxer → re-codifica a H.264 mp4 con faststart.
+   * Concatena los videos de escena en un solo archivo.
    */
-  private async runFFmpeg(concatFilePath: string, outputPath: string): Promise<void> {
+  private async runConcat(concatFilePath: string, outputPath: string): Promise<void> {
     const args: string[] = [];
 
     if (this.options.overwrite) {
@@ -172,7 +258,6 @@ export class FFmpegEngine extends Engine {
         maxBuffer: 10 * 1024 * 1024,
       });
 
-      // FFmpeg escribe progreso a stderr — no es un error
       if (process.env.VIDEO_ENGINE_DEBUG) {
         console.error('[ffmpeg stderr]', stderr);
       }

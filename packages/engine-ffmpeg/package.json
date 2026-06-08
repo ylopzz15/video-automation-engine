@@ -9,7 +9,8 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@video-engine/config": "0.1.0",
     "@video-engine/core": "0.1.0",
-    "@video-engine/config": "0.1.0"
+    "sharp": "^0.34.5"
   }
 }

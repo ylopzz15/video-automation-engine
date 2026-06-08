@@ -10,7 +10,8 @@
     "build": "tsc -b packages/config packages/core packages/engine-playwright packages/engine-ffmpeg",
     "dev": "tsc --build --watch packages/*/tsconfig.json",
     "lint": "eslint packages/*/src --ext .ts",
-    "clean": "rimraf packages/*/dist"
+    "clean": "rimraf packages/*/dist",
+    "prepare-frames": "node scripts/prepare-frames.js"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

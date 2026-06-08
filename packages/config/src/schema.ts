@@ -140,6 +140,8 @@ export const videoConfigSchema = z.object({
   version: z.string().optional(),
   voice: voiceSchema.optional(),
   output: outputSchema,
+  /** Marco de dispositivo (ej: 'iphone-15'). Busca frames/{frame}.png */
+  frame: z.string().optional(),
   playwright: playwrightOptionsSchema,
   scenes: z.array(sceneSchema).min(1),
 });
@@ -188,6 +190,7 @@ export interface VideoConfig {
   version?: string;
   voice?: VoiceConfig;
   output: OutputConfig;
+  frame?: string;
   playwright?: PlaywrightConfig;
   scenes: SceneConfig[];
 }
