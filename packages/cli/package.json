@@ -10,11 +10,16 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@video-engine/core": "0.1.0",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@video-engine/config": "0.1.0",
+    "@video-engine/core": "0.1.0",
+    "@video-engine/discovery": "0.1.0",
+    "@video-engine/engine-ffmpeg": "0.1.0",
     "@video-engine/engine-playwright": "0.1.0",
     "@video-engine/engine-polly": "0.1.0",
-    "@video-engine/engine-ffmpeg": "0.1.0",
+    "@video-engine/planner": "0.1.0",
+    "@video-engine/workflow-generator": "0.1.0",
+    "dotenv": "^17.4.2",
     "yargs": "^17.7.2"
   },
   "devDependencies": {

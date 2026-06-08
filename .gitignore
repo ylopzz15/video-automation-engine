@@ -76,11 +76,11 @@ desktop.ini
 # =========================
 playwright-report/
 test-results/
+.playwright-mcp/
 
 # =========================
-# FFmpeg temporales
+# FFmpeg temporales (MPEG transport streams)
 # =========================
-*.ts
 *.mkv
 
 # =========================

@@ -1,5 +1,5 @@
 {
-  "name": "@video-engine/core",
+  "name": "@video-engine/planner",
   "version": "0.1.0",
   "private": true,
   "main": "dist/index.js",
@@ -9,8 +9,6 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@video-engine/config": "0.1.0",
-    "@video-engine/plugin-api": "0.1.0",
-    "js-yaml": "^4.1.0"
+    "@video-engine/discovery": "0.1.0"
   }
 }

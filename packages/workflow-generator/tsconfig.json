@@ -8,14 +8,9 @@
     "composite": true
   },
   "include": ["src"],
+  "exclude": ["examples"],
   "references": [
-    { "path": "../core" },
-    { "path": "../config" },
-    { "path": "../discovery" },
     { "path": "../planner" },
-    { "path": "../workflow-generator" },
-    { "path": "../engine-playwright" },
-    { "path": "../engine-polly" },
-    { "path": "../engine-ffmpeg" }
+    { "path": "../discovery" }
   ]
 }

@@ -1,0 +1,24 @@
+title: "Playwright Test"
+
+output:
+  fps: 30
+  format: mp4
+  path: ./output/test.mp4
+
+playwright:
+  slowMo: 500
+  highlightClicks: true
+  showCursor: true
+  persistentContext: true
+
+scenes:
+  - id: navigate
+    steps:
+      - action: goto
+        url: https://playwright.dev
+        waitUntil: networkidle
+
+  - id: click
+    steps:
+      - action: click
+        selector: text=Get started  

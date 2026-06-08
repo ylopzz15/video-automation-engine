@@ -1,8 +1,6 @@
 title: "AVIA Pilot Registration"
 
 output:
-  width: 375
-  height: 667
   fps: 30
   format: mp4
   path: ./output/avia-pilot-registration.mp4
@@ -13,89 +11,64 @@ playwright:
   showCursor: true
   screenshotOnComplete: true
   headless: true
-
-  viewport:
-    width: 375
-    height: 667
+  persistentContext: true
 
 scenes:
   - id: pilot-registration
     steps:
-      # Login
       - action: goto
         url: https://avia1.com/dashboard
-
-      - action: wait
-        duration: 3000
+        waitUntil: networkidle
 
       - action: fill
         selector: "#email"
-        value: "correo"
-
-      - action: wait
-        duration: 500
+        value: "${AVIA_EMAIL}"
 
       - action: fill
         selector: "#password"
-        value: "contraseña"
+        value: "${AVIA_PASSWORD}"
 
-      - action: wait
-        duration: 500
-
-      - action: click
-        selector: "button[type='submit']"
-
-      - action: wait
-        duration: 8000
-
-      # Documentos
-      - action: click
-        selector: "text=Documentos"
-
-      - action: wait
-        duration: 3000
-
-      # Tripulación
-      - action: click
-        selector: "text=Tripulación"
-
-      - action: wait
-        duration: 3000
-
-      # Registrar Piloto
-      - action: click
-        selector: "button[aria-label='Registrar Piloto']"
-
-      - action: wait
-        duration: 3000
-
-      # Nombre
-      - action: fill
-        selector: "input[name='name']"
-        value: "Juan Perez Villarreal"
-
-      - action: wait
-        duration: 500
-
-      # Licencia
-      - action: fill
-        selector: "input[name='licenseNumber']"
-        value: "PIL12345"
-
-      - action: wait
-        duration: 500
-
-      # Dirección
-      - action: fill
-        selector: "textarea[name='address']"
-        value: "Calle Principal 123, Monterrey"
-
-      - action: wait
-        duration: 1500
-
-      # Registrar Piloto
       - action: click
         selector: "button[type='submit']"
 
       - action: wait
         duration: 5000
+
+      - action: click
+        selector: "text=Documentos"
+
+      - action: wait
+        duration: 2000
+
+      - action: click
+        selector: "text=Tripulación"
+
+      - action: wait
+        duration: 2000
+
+      - action: click
+        selector: "button[aria-label='Registrar Piloto']"
+
+      - action: wait
+        duration: 2000
+
+      - action: fill
+        selector: "input[name='name']"
+        value: "Yanitzy Lopez"
+
+      - action: fill
+        selector: "input[name='licenseNumber']"
+        value: "PIL12345"
+
+      - action: fill
+        selector: "textarea[name='address']"
+        value: "Calle Principal 123, Monterrey"
+
+      - action: wait
+        duration: 1000
+
+      - action: click
+        selector: "button[type='submit']"
+
+      - action: wait
+        duration: 3000

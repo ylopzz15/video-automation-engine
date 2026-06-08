@@ -1,8 +1,6 @@
 title: "AVIA Documentos Test"
 
 output:
-  width: 1920
-  height: 1080
   fps: 30
   format: mp4
   path: ./output/avia-documentos.mp4
@@ -13,36 +11,31 @@ playwright:
   showCursor: true
   screenshotOnComplete: true
   headless: true
-
-  viewport:
-    width: 1920
-    height: 1080
+  persistentContext: true
 
 scenes:
   - id: documentos
     steps:
       - action: goto
         url: https://avia1.com/dashboard
-
-      - action: wait
-        duration: 3000
+        waitUntil: networkidle
 
       - action: fill
         selector: "#email"
-        value: "correo"
+        value: "${AVIA_EMAIL}"
 
       - action: fill
         selector: "#password"
-        value: "contraseña"
+        value: "${AVIA_PASSWORD}"
 
       - action: click
         selector: "button[type='submit']"
 
       - action: wait
-        duration: 8000
+        duration: 5000
 
       - action: click
         selector: "text=Documentos"
 
       - action: wait
-        duration: 5000
+        duration: 3000
