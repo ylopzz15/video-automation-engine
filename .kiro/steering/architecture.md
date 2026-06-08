@@ -33,7 +33,7 @@ await kiro.record({
 
 ## Reglas del framework
 
-### ✅ El core NUNCA debe contener:
+### El core NUNCA debe contener:
 
 - Credenciales de ninguna app
 - URLs específicas de ningún cliente
@@ -41,13 +41,13 @@ await kiro.record({
 - Paths de máquinas específicas
 - Console.log de debug
 
-### ✅ El usuario configura via:
+### El usuario configura via:
 
 - .env → credenciales y API keys
 - kiro.config.ts → preferencias del proyecto
 - El script en lenguaje natural → qué grabar
 
-### ✅ Separación de responsabilidades
+### Separación de responsabilidades
 
 - discovery   → inspecciona cualquier página, devuelve PageMap
 - planner     → convierte script humano en PlanSteps (usa LLMPlanner)
