@@ -38,10 +38,12 @@ export class PlaywrightEngine extends Engine {
     const yamlConfig = ctx.config.playwright;
     const resolved = this.resolveOptions(yamlConfig);
 
+  if (!resolved.persistentContext) {
     this.browser = await chromium.launch({
       headless: resolved.headless,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
+  }
 
     const { scenes } = ctx.config;
     const viewport = this.resolveViewport(resolved);
@@ -53,9 +55,11 @@ export class PlaywrightEngine extends Engine {
     } else {
       result = await this.executeIsolatedScenes(scenes, viewport, ctx.workDir, resolved, start);
     }
-
-    await this.browser.close();
-    this.browser = null;
+    
+    if (this.browser) {
+      await this.browser.close();
+      this.browser = null;
+    }
 
     // Almacenar paths de video para engines downstream (FFmpeg)
     const videoPaths = (result.scenes ?? []).map((r) => r.videoPath);
@@ -71,90 +75,100 @@ export class PlaywrightEngine extends Engine {
    * Produce un único archivo de video con todo el flujo.
    */
   private async executeSharedContext(
-    scenes: SceneConfig[],
-    viewport: ResolvedViewport,
-    workDir: string,
-    options: ResolvedOptions,
-    startTime: number,
-  ): Promise<StageResult> {
-    const videoDir = path.join(workDir, 'videos', 'shared');
-    const screenshotDir = path.join(workDir, 'screenshots');
-    fs.mkdirSync(videoDir, { recursive: true });
-    fs.mkdirSync(screenshotDir, { recursive: true });
+  scenes: SceneConfig[],
+  viewport: ResolvedViewport,
+  workDir: string,
+  options: ResolvedOptions,
+  startTime: number,
+): Promise<StageResult> {
+  const videoDir = path.join(workDir, 'videos', 'shared');
+  const screenshotDir = path.join(workDir, 'screenshots');
+  fs.mkdirSync(videoDir, { recursive: true });
+  fs.mkdirSync(screenshotDir, { recursive: true });
 
-    const context: BrowserContext = await this.browser!.newContext({
-      viewport: { width: viewport.width, height: viewport.height },
-      deviceScaleFactor: viewport.deviceScaleFactor,
-      isMobile: viewport.isMobile,
-      hasTouch: viewport.hasTouch,
-      userAgent: viewport.userAgent,
-      recordVideo: {
-        dir: videoDir,
-        size: { width: viewport.width, height: viewport.height },
-      },
-    });
+  const profileDir = path.join(process.cwd(), '.browser-profile');
+  fs.mkdirSync(profileDir, { recursive: true });
 
-    context.setDefaultTimeout(30_000);
+  // launchPersistentContext guarda sesión completa entre ejecuciones
+  const context: BrowserContext = await chromium.launchPersistentContext(profileDir, {
+    headless: options.headless,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    slowMo: options.slowMo,
+    viewport: { width: viewport.width, height: viewport.height },
+    deviceScaleFactor: viewport.deviceScaleFactor,
+    isMobile: viewport.isMobile,
+    hasTouch: viewport.hasTouch,
+    userAgent: viewport.userAgent,
+    recordVideo: {
+      dir: videoDir,
+      size: { width: viewport.width, height: viewport.height },
+    },
+  });
 
-    const page: Page = await context.newPage();
-    const sceneResults: SceneResult[] = [];
-    const artifacts: string[] = [];
+  context.setDefaultTimeout(30_000);
 
-    for (const scene of scenes) {
-      const sceneStart = Date.now();
+  const page: Page = await context.newPage();
+  const sceneResults: SceneResult[] = [];
+  const artifacts: string[] = [];
 
-      console.log(`[scene] ${scene.id}`);
-      console.log(`[page-url] ${page.url()}`);
+  for (const scene of scenes) {
+    const sceneStart = Date.now();
 
-      const actionOptions: ActionExecutorOptions = {
-        slowMo: options.slowMo,
-        highlightClicks: options.highlightClicks,
-        showCursor: options.showCursor,
-        screenshotDir,
-        sceneId: scene.id,
-      };
+    console.log(`[scene] ${scene.id}`);
+    console.log(`[page-url] ${page.url()}`);
 
-      for (const step of scene.steps) {
-        await executeAction(page, step, actionOptions);
-      }
-
-      let screenshotPath: string | undefined;
-      if (options.screenshotOnComplete) {
-        screenshotPath = path.join(screenshotDir, `scene-${scene.id}-final.png`);
-        await page.screenshot({ path: screenshotPath, fullPage: false });
-        artifacts.push(screenshotPath);
-      }
-
-      sceneResults.push({
-        sceneId: scene.id,
-        videoPath: '', // Se asigna después al cerrar el contexto
-        durationMs: Date.now() - sceneStart,
-        screenshotPath,
-      });
-    }
-
-    // Cerrar para finalizar el archivo de video
-    await page.close();
-    await context.close();
-
-    // Renombrar el video generado
-    const videoFile = this.findVideoFile(videoDir);
-    const finalVideoPath = path.join(workDir, 'recording.webm');
-    fs.renameSync(videoFile, finalVideoPath);
-    artifacts.push(finalVideoPath);
-
-    // Asignar el path de video a todos los scene results
-    for (const sr of sceneResults) {
-      sr.videoPath = finalVideoPath;
-    }
-
-    return {
-      engine: this.name,
-      durationMs: Date.now() - startTime,
-      artifacts,
-      scenes: sceneResults,
+    const actionOptions: ActionExecutorOptions = {
+      slowMo: options.slowMo,
+      highlightClicks: options.highlightClicks,
+      showCursor: options.showCursor,
+      screenshotDir,
+      sceneId: scene.id,
     };
+
+    for (const step of scene.steps) {
+      try {
+        await executeAction(page, step, actionOptions);
+      } catch (err: any) {
+        console.log(`[SKIP] ${scene.id} → ${step.action}: ${err.message?.split('\n')[0]}`);
+      }
+    }
+
+    let screenshotPath: string | undefined;
+    if (options.screenshotOnComplete) {
+      screenshotPath = path.join(screenshotDir, `scene-${scene.id}-final.png`);
+      await page.screenshot({ path: screenshotPath, fullPage: false });
+      artifacts.push(screenshotPath);
+    }
+
+    sceneResults.push({
+      sceneId: scene.id,
+      videoPath: '',
+      durationMs: Date.now() - sceneStart,
+      screenshotPath,
+    });
   }
+
+  // Cerrar para finalizar el archivo de video
+  await page.close();
+  await context.close();
+
+  // Renombrar el video generado
+  const videoFile = this.findVideoFile(videoDir);
+  const finalVideoPath = path.join(workDir, 'recording.webm');
+  fs.renameSync(videoFile, finalVideoPath);
+  artifacts.push(finalVideoPath);
+
+  for (const sr of sceneResults) {
+    sr.videoPath = finalVideoPath;
+  }
+
+  return {
+    engine: this.name,
+    durationMs: Date.now() - startTime,
+    artifacts,
+    scenes: sceneResults,
+  };
+}
 
   /**
    * Modo aislado (original): cada escena tiene su propio Context/Page.
