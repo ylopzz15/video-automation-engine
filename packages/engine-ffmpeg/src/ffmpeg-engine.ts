@@ -119,18 +119,20 @@ export class FFmpegEngine extends Engine {
    * Estrategia: plantilla como fondo (input 0), video posicionado en el hueco (input 1).
    * La isla dinámica y bordes del frame ya son opacos en el PNG y no se modifican.
    */
-  private async applyFrame(
+private async applyFrame(
     inputVideo: string,
     outputPath: string,
     frame: FrameConfig,
   ): Promise<void> {
-    const { screen, image } = frame;
+    const { screen, image, totalWidth, totalHeight } = frame;
 
-    // input 0: plantilla PNG (fondo con el marco del dispositivo)
-    // input 1: video grabado (se escala y posiciona en el hueco de la pantalla)
+    // 1. [1:v]scale: Escala el video grabado al tamaño de la pantalla del dispositivo.
+    // 2. [vid]pad: Expande el lienzo al tamaño total de la plantilla y ubica el video en x,y.
+    // 3. [padded][0:v]overlay: Coloca la plantilla PNG (con su centro transparente) ENCIMA del lienzo.
     const filterComplex =
       `[1:v]scale=${screen.width}:${screen.height}[vid];` +
-      `[0:v][vid]overlay=${screen.x}:${screen.y}:eof_action=repeat[out]`;
+      `[vid]pad=${totalWidth}:${totalHeight}:${screen.x}:${screen.y}:color=black[padded];` +
+      `[padded][0:v]overlay=0:0:eof_action=repeat[out]`;
 
     const args: string[] = [];
 
@@ -144,7 +146,8 @@ export class FFmpegEngine extends Engine {
       '-filter_complex', filterComplex,
       '-map', '[out]',
       '-c:v', 'libx264',
-      '-preset', 'ultrafast',
+      '-preset', 'medium',
+      '-crf', '18',
       '-pix_fmt', 'yuv420p',
       '-shortest',
       outputPath,

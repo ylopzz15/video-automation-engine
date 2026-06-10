@@ -1,24 +1,13 @@
 {
-  "iphone-15": {
-    "image": "iphone-15.png",
-    "totalWidth": 1024,
-    "totalHeight": 1536,
-    "screen": {
-      "x": 217,
-      "y": 106,
-      "width": 589,
-      "height": 1257
-    }
-  },
   "plantilla-iphone": {
     "image": "plantilla-iphone.png",
     "totalWidth": 1536,
     "totalHeight": 1024,
     "screen": {
       "x": 575,
-      "y": 160,
+      "y": 90,
       "width": 390,
-      "height": 724
+      "height": 844
     }
   }
 }
