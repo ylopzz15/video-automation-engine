@@ -3,13 +3,10 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "declaration": true,
-    "declarationMap": true,
     "composite": true
   },
   "include": ["src"],
   "references": [
-    { "path": "../config" },
-    { "path": "../narration-generator" }
+    { "path": "../config" }
   ]
 }

@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as yaml from 'js-yaml';
 import { Pipeline } from './pipeline';
 import { Engine } from './types';
+import { generateNarration } from '@video-engine/narration-generator';
 import type { VideoConfig } from '@video-engine/config';
 
 /**
@@ -95,17 +96,30 @@ export class Kiro {
       const outputDir = path.dirname(outputPath);
       fs.mkdirSync(outputDir, { recursive: true });
 
-      const pipeline = new Pipeline();
-      for (const engine of engines) {
-        pipeline.use(engine);
+      // Generar narración automática si hay engine de voz configurado
+      if (config.voice) {
+        const narrationScripts = generateNarration(config.scenes);
+        
+        // Inyectar narración en escenas que no tienen texto manual
+        for (const script of narrationScripts) {
+          const scene = config.scenes.find(s => s.id === script.sceneId);
+          if (scene && !scene.narration) {
+            scene.narration = script.text;
+          }
+        }
       }
 
-      await pipeline.run({
-        config,
-        workDir,
-        assets: new Map(),
-        metadata: {},
-      });
+        const pipeline = new Pipeline();
+        for (const engine of engines) {
+          pipeline.use(engine);
+        }
+
+        await pipeline.run({
+          config,
+          workDir,
+          assets: new Map(),
+          metadata: {},
+        });
 
       return { videoPath: outputPath, yamlContent };
     } finally {

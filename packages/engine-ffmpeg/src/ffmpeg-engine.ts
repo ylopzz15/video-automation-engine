@@ -7,13 +7,9 @@ import { Engine, PipelineContext, StageResult, SceneResult } from '@video-engine
 const execFileAsync = promisify(execFile);
 
 export interface FFmpegEngineOptions {
-  /** Ruta al binario de ffmpeg (debe estar en PATH si se omite) */
   ffmpegPath?: string;
-  /** Flags adicionales para la salida (ej: ['-preset', 'fast']) */
   extraArgs?: string[];
-  /** Sobreescribir archivo de salida sin preguntar */
   overwrite?: boolean;
-  /** Directorio raíz del proyecto (para resolver frames/) */
   projectRoot?: string;
 }
 
@@ -62,6 +58,17 @@ export class FFmpegEngine extends Engine {
       await this.applyFrame(rawVideoPath, outputPath, frameConfig);
     }
 
+    // Paso 3: si hay audio de Polly, mezclarlo con el video sincronizado por escena
+    const audioAsset = ctx.assets.get('audio');
+    if (audioAsset) {
+      const audioPaths = audioAsset.split(',').filter(Boolean);
+      if (audioPaths.length > 0) {
+        const videoWithAudio = outputPath.replace('.mp4', '-narrated.mp4');
+        await this.mixAudio(outputPath, audioPaths, videoWithAudio, sceneResults);
+        fs.renameSync(videoWithAudio, outputPath);
+      }
+    }
+
     if (!fs.existsSync(outputPath)) {
       throw new Error(`FFmpeg did not produce output file: ${outputPath}`);
     }
@@ -75,10 +82,6 @@ export class FFmpegEngine extends Engine {
     };
   }
 
-  /**
-   * Resuelve la configuración de frame si está definida en el config.
-   * Busca frames/optimized/{frame}.png (pre-procesado por prepare-frames).
-   */
   private resolveFrame(ctx: PipelineContext): FrameConfig | null {
     const frameName = (ctx.config as any).frame;
     if (!frameName) return null;
@@ -97,7 +100,6 @@ export class FFmpegEngine extends Engine {
       throw new Error(`Frame "${frameName}" not found in frames/frames.json`);
     }
 
-    // Usa la versión optimizada (pre-procesada por npm run prepare-frames)
     const optimizedPath = path.join(framesDir, 'optimized', config.image);
     const originalPath = path.join(framesDir, config.image);
     const imagePath = fs.existsSync(optimizedPath) ? optimizedPath : originalPath;
@@ -114,21 +116,13 @@ export class FFmpegEngine extends Engine {
     };
   }
 
-  /**
-   * Aplica el marco de dispositivo sobre el video.
-   * Estrategia: plantilla como fondo (input 0), video posicionado en el hueco (input 1).
-   * La isla dinámica y bordes del frame ya son opacos en el PNG y no se modifican.
-   */
-private async applyFrame(
+  private async applyFrame(
     inputVideo: string,
     outputPath: string,
     frame: FrameConfig,
   ): Promise<void> {
     const { screen, image, totalWidth, totalHeight } = frame;
 
-    // 1. [1:v]scale: Escala el video grabado al tamaño de la pantalla del dispositivo.
-    // 2. [vid]pad: Expande el lienzo al tamaño total de la plantilla y ubica el video en x,y.
-    // 3. [padded][0:v]overlay: Coloca la plantilla PNG (con su centro transparente) ENCIMA del lienzo.
     const filterComplex =
       `[1:v]scale=${screen.width}:${screen.height}[vid];` +
       `[vid]pad=${totalWidth}:${totalHeight}:${screen.x}:${screen.y}:color=black[padded];` +
@@ -136,9 +130,7 @@ private async applyFrame(
 
     const args: string[] = [];
 
-    if (this.options.overwrite) {
-      args.push('-y');
-    }
+    if (this.options.overwrite) args.push('-y');
 
     args.push(
       '-i', image,
@@ -146,8 +138,7 @@ private async applyFrame(
       '-filter_complex', filterComplex,
       '-map', '[out]',
       '-c:v', 'libx264',
-      '-preset', 'medium',
-      '-crf', '18',
+      '-preset', 'fast',
       '-pix_fmt', 'yuv420p',
       '-shortest',
       outputPath,
@@ -160,6 +151,69 @@ private async applyFrame(
     } catch (err: any) {
       const message = err.stderr || err.message || 'Unknown FFmpeg error';
       throw new Error(`FFmpeg frame overlay failed:\n${message}`);
+    }
+  }
+
+  private async mixAudio(
+    videoPath: string,
+    audioPaths: string[],
+    outputPath: string,
+    _sceneResults: SceneResult[],
+  ): Promise<void> {
+    // Estrategia simple y confiable: concatenar todos los MP3 en orden
+    // y mezclar como un solo track de audio sobre el video.
+    const workDir = path.dirname(videoPath);
+    const concatAudioPath = path.join(workDir, 'narration-concat.mp3');
+    const concatList = path.join(workDir, 'audio-concat.txt');
+
+    // Crear lista de concatenación para los MP3
+    const lines = audioPaths.map(
+      (p) => `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`
+    );
+    fs.writeFileSync(concatList, lines.join('\n'), 'utf-8');
+
+    // Concatenar todos los audios en un solo MP3
+    await execFileAsync(this.options.ffmpegPath, [
+      '-y', '-f', 'concat', '-safe', '0',
+      '-i', concatList,
+      '-c:a', 'libmp3lame', '-q:a', '2',
+      concatAudioPath,
+    ], { maxBuffer: 10 * 1024 * 1024 });
+
+    // Mezclar audio concatenado con el video (solo video del input 0, solo audio del input 1)
+    try {
+      await execFileAsync(this.options.ffmpegPath, [
+        '-y',
+        '-i', videoPath,
+        '-i', concatAudioPath,
+        '-map', '0:v:0',
+        '-map', '1:a:0',
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-shortest',
+        outputPath,
+      ], { maxBuffer: 10 * 1024 * 1024 });
+    } catch (err: any) {
+      const message = err.stderr || err.message || 'Unknown FFmpeg error';
+      throw new Error(`FFmpeg audio mix failed:\n${message}`);
+    }
+  }
+
+  /** Obtiene la duración real del video en milisegundos usando ffprobe. */
+  private async getVideoDurationMs(videoPath: string): Promise<number> {
+    try {
+      const ffprobePath = this.options.ffmpegPath.replace('ffmpeg', 'ffprobe');
+      const { stdout } = await execFileAsync(ffprobePath, [
+        '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1',
+        videoPath,
+      ]);
+      const seconds = parseFloat(stdout.trim());
+      return Math.round(seconds * 1000);
+    } catch {
+      // Fallback: sumar durationMs de sceneResults
+      return 0;
     }
   }
 
@@ -228,23 +282,15 @@ private async applyFrame(
     return path.resolve(ctx.workDir, configPath);
   }
 
-  /**
-   * Concatena los videos de escena en un solo archivo.
-   */
   private async runConcat(concatFilePath: string, outputPath: string): Promise<void> {
     const args: string[] = [];
 
-    if (this.options.overwrite) {
-      args.push('-y');
-    }
+    if (this.options.overwrite) args.push('-y');
 
     args.push(
       '-f', 'concat',
       '-safe', '0',
       '-i', concatFilePath,
-    );
-
-    args.push(
       '-c:v', 'libx264',
       '-pix_fmt', 'yuv420p',
       '-movflags', '+faststart',

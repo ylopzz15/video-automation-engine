@@ -16,6 +16,7 @@
     { "path": "../workflow-generator" },
     { "path": "../engine-playwright" },
     { "path": "../engine-polly" },
-    { "path": "../engine-ffmpeg" }
+    { "path": "../engine-ffmpeg" },
+    { "path": "../narration-generator" }
   ]
 }

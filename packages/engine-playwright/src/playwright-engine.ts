@@ -105,7 +105,7 @@ export class PlaywrightEngine extends Engine {
     },
   });
 
-  context.setDefaultTimeout(30_000);
+  context.setDefaultTimeout(10_000);
 
   const page: Page = await context.newPage();
   const sceneResults: SceneResult[] = [];
@@ -148,14 +148,28 @@ export class PlaywrightEngine extends Engine {
     });
   }
 
-  // Cerrar para finalizar el archivo de video
+ // Guardar referencia al path ANTES de cerrar
+  const videoPath = await page.video()?.path();
+
+  // Cerrar en orden correcto — context.close() finaliza la escritura del video
   await page.close();
   await context.close();
 
-  // Renombrar el video generado
-  const videoFile = this.findVideoFile(videoDir);
+  // Esperar a que el archivo exista y tenga contenido real
+  const sourceVideo = videoPath || this.findVideoFile(videoDir);
+  let attempts = 0;
+  while (attempts < 20) {
+    if (fs.existsSync(sourceVideo) && fs.statSync(sourceVideo).size > 1000) break;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    attempts++;
+  }
+
+  if (!fs.existsSync(sourceVideo) || fs.statSync(sourceVideo).size < 1000) {
+    throw new Error(`Video file is empty or missing: ${sourceVideo}`);
+  }
+
   const finalVideoPath = path.join(workDir, 'recording.webm');
-  fs.renameSync(videoFile, finalVideoPath);
+  fs.renameSync(sourceVideo, finalVideoPath);
   artifacts.push(finalVideoPath);
 
   for (const sr of sceneResults) {
@@ -226,7 +240,7 @@ export class PlaywrightEngine extends Engine {
       },
     });
 
-    context.setDefaultTimeout(30_000);
+    context.setDefaultTimeout(10_000);
 
     const page: Page = await context.newPage();
 
@@ -242,7 +256,11 @@ export class PlaywrightEngine extends Engine {
     };
 
     for (const step of scene.steps) {
-      await executeAction(page, step, actionOptions);
+      try {
+        await executeAction(page, step, actionOptions);
+      } catch (err: any) {
+        console.log(`[SKIP] ${scene.id} → ${step.action}: ${err.message?.split('\n')[0]}`);
+      }
     }
 
     let screenshotPath: string | undefined;

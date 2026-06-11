@@ -7,6 +7,7 @@ import { loadConfig } from '@video-engine/config';
 import { Pipeline } from '@video-engine/core';
 import { PlaywrightEngine } from '@video-engine/engine-playwright';
 import { FFmpegEngine } from '@video-engine/engine-ffmpeg';
+import { generateNarration } from '@video-engine/narration-generator';
 
 interface GenerateArgs {
   config: string;
@@ -14,13 +15,6 @@ interface GenerateArgs {
   verbose?: boolean;
 }
 
-/**
- * Detecta la ruta de ffmpeg:
- * 1. Variable de entorno FFMPEG_PATH
- * 2. @ffmpeg-installer/ffmpeg (auto-instalado con npm)
- * 3. Autodetección con where/which
- * 4. Fallback a 'ffmpeg' (asume que está en PATH)
- */
 function resolveFFmpegPath(): string {
   if (process.env.FFMPEG_PATH) {
     return process.env.FFMPEG_PATH;
@@ -81,9 +75,29 @@ export const generateCommand: CommandModule<{}, GenerateArgs> = {
         console.log(`[video-engine] FFmpeg: ${ffmpegPath}`);
       }
 
+      // Inyectar narración automática si hay voz configurada
+      if (config.voice) {
+        const narrationScripts = generateNarration(config.scenes);
+        for (const script of narrationScripts) {
+          const scene = config.scenes.find(s => s.id === script.sceneId);
+          if (scene && !scene.narration) {
+            scene.narration = script.text;
+          }
+        }
+      }
+
+      // Construir pipeline
       const pipeline = new Pipeline()
-        .use(new PlaywrightEngine())
-        .use(new FFmpegEngine({ ffmpegPath }));
+        .use(new PlaywrightEngine());
+
+      // Activar Polly si hay narración en cualquier escena
+      const hasNarration = config.scenes.some((s: any) => s.narration);
+      if (hasNarration) {
+        const { PollyEngine } = await import('@video-engine/engine-polly');
+        pipeline.use(new PollyEngine());
+      }
+
+      pipeline.use(new FFmpegEngine({ ffmpegPath }));
 
       const result = await pipeline.run({
         config,

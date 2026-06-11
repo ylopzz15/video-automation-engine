@@ -6,27 +6,36 @@ import { Engine, PipelineContext, StageResult } from '@video-engine/core';
 export class PollyEngine extends Engine {
   readonly name = 'polly';
   private client: PollyClient;
+  private defaultVoiceId: string;
+  private defaultLanguageCode: string;
 
-  constructor(region = 'us-east-1') {
+  constructor(options?: { region?: string; voiceId?: string; languageCode?: string }) {
     super();
-    this.client = new PollyClient({ region });
+    this.client = new PollyClient({ region: options?.region ?? process.env.AWS_REGION ?? 'us-east-1' });
+    this.defaultVoiceId = options?.voiceId ?? 'Mia';
+    this.defaultLanguageCode = options?.languageCode ?? 'es-MX';
   }
 
   async execute(ctx: PipelineContext): Promise<StageResult> {
     const start = Date.now();
     const artifacts: string[] = [];
-    const { voice, scenes } = ctx.config;
+    const { scenes } = ctx.config;
 
-    if (!voice) {
-      throw new Error('PollyEngine requires voice configuration');
-    }
+    const voiceId = ctx.config.voice?.voiceId ?? this.defaultVoiceId;
+    const languageCode = ctx.config.voice?.languageCode ?? this.defaultLanguageCode;
 
+    let hasNarration = false;
     for (const scene of scenes) {
       if (!scene.narration) continue;
+      hasNarration = true;
 
       const audioPath = path.join(ctx.workDir, `audio-${scene.id}.mp3`);
-      await this.synthesize(scene.narration, voice.voiceId, voice.languageCode, audioPath);
+      await this.synthesize(scene.narration, voiceId, languageCode, audioPath);
       artifacts.push(audioPath);
+    }
+
+    if (!hasNarration) {
+      console.log('[polly] No narration found in scenes, skipping audio generation');
     }
 
     ctx.assets.set('audio', artifacts.join(','));
@@ -38,7 +47,6 @@ export class PollyEngine extends Engine {
     };
   }
 
-  /** Sintetiza texto a audio usando AWS Polly con motor neural. */
   private async synthesize(
     text: string,
     voiceId: string,

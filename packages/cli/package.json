@@ -17,6 +17,7 @@
     "@video-engine/engine-ffmpeg": "0.1.0",
     "@video-engine/engine-playwright": "0.1.0",
     "@video-engine/engine-polly": "0.1.0",
+    "@video-engine/narration-generator": "0.1.0",
     "@video-engine/planner": "0.1.0",
     "@video-engine/workflow-generator": "0.1.0",
     "dotenv": "^17.4.2",

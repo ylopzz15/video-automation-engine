@@ -96,6 +96,14 @@ export async function executeAction(
       }
       return result;
 
+    case 'waitForUrl':
+      await handleWaitForUrl(page, action);
+      return undefined;
+
+    case 'waitForSelector':
+      await handleWaitForSelector(page, action);
+      return undefined;
+
     default:
       throw new Error(`Unknown action: ${(action as any).action}`);
   }
@@ -360,6 +368,43 @@ async function highlightElement(page: Page, selector: string): Promise<void> {
 
   // Esperar a que la animación completa se capture en el video (~27 frames a 30fps)
   await delay(900);
+}
+
+// --- Smart Waits con métricas ---
+
+async function handleWaitForUrl(
+  page: Page,
+  action: { contains: string; timeout: number },
+): Promise<void> {
+  const start = Date.now();
+  try {
+    await page.waitForURL(`**/*${action.contains}*`, { timeout: action.timeout });
+  } catch {
+    // Si el URL ya contiene el string, no es un error
+    if (!page.url().includes(action.contains)) {
+      throw new Error(`waitForUrl: URL never contained "${action.contains}" (timeout: ${action.timeout}ms)`);
+    }
+  }
+  const actual = Date.now() - start;
+  console.log(`[metric] waitForUrl "${action.contains}" — timeout: ${action.timeout}ms, actual: ${actual}ms`);
+}
+
+async function handleWaitForSelector(
+  page: Page,
+  action: { selector: string; timeout: number; hidden: boolean },
+): Promise<void> {
+  const start = Date.now();
+  const locator = resolveLocator(page, action.selector);
+
+  if (action.hidden) {
+    await locator.waitFor({ state: 'hidden', timeout: action.timeout });
+  } else {
+    await locator.waitFor({ state: 'visible', timeout: action.timeout });
+  }
+
+  const actual = Date.now() - start;
+  const mode = action.hidden ? 'hidden' : 'visible';
+  console.log(`[metric] waitForSelector "${action.selector}" (${mode}) — timeout: ${action.timeout}ms, actual: ${actual}ms`);
 }
 
 function delay(ms: number): Promise<void> {

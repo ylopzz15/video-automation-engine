@@ -1,170 +1,669 @@
-# KIRO Framework — Architecture Steering
+# KIRO Framework — Steering de Arquitectura
 
-## Qué es este proyecto
+## Qué es KIRO
 
-Un framework para developers que genera videos de demostración 
-narrados de cualquier aplicación web.
+KIRO es un framework para generar videos de demostración de aplicaciones web de forma automática.
 
-El usuario da una URL y un script en lenguaje natural.
-El framework graba un MP4 con las acciones ejecutadas + narración.
+El usuario únicamente proporciona:
 
-## Uso esperado (contrato público)
+* Una URL
+* Un script en lenguaje natural
 
-### CLI (uso principal)
+Ejemplo:
+
+```bash
 npx kiro record \
   --url https://miapp.com \
-  --script "Inicia sesión, luego muestra cómo llenar el módulo de tripulantes"
+  --script "Inicia sesión y muestra cómo configurar los precios"
+```
 
-### API (uso avanzado)
-import { Kiro } from '@kiro/core'
+KIRO debe encargarse de:
 
-const kiro = new Kiro()
-await kiro.record({
-  url: 'https://miapp.com',
-  script: 'Inicia sesión, luego muestra el módulo de tripulantes',
-  output: './demo.mp4'
-})
+```text
+URL + Script
+↓
+Discovery
+↓
+Planificación
+↓
+Generación de Workflow
+↓
+Ejecución
+↓
+Grabación
+↓
+Narración
+↓
+MP4 Final
+```
 
-## Reglas del framework
+El framework debe funcionar con cualquier sitio web y nunca contener lógica específica de clientes.
 
-### El core NUNCA debe contener:
-- Credenciales de ninguna app
-- URLs específicas de ningún cliente
-- Lógica específica de ninguna página
-- Paths de máquinas específicas
-- Console.log de debug
+---
 
-### El usuario configura via:
-- .env → credenciales y API keys
-- kiro.config.ts → preferencias del proyecto
-- El script en lenguaje natural → qué grabar
+# Principios Fundamentales
 
-### Separación de responsabilidades
-- discovery   → inspecciona cualquier página, devuelve PageMap
-- planner     → convierte script humano en PlanSteps
-- engine      → ejecuta acciones y graba video
-- narration   → genera audio con Polly y lo mezcla (fase 2)
-- core        → orquesta todo, expone la API pública
-- cli         → interfaz de línea de comandos
+## Framework Genérico
 
-## Herramientas disponibles para KIRO
+Nunca hardcodear:
 
-### Playwright MCP
-KIRO tiene acceso a Playwright MCP para inspeccionar páginas web.
-Úsalo para ver qué hay en cualquier página antes de generar el YAML.
+* URLs de clientes
+* Credenciales de clientes
+* Selectores específicos de clientes
+* Flujos específicos de clientes
+* Reglas de negocio de clientes
 
-Herramientas principales:
-- browser_navigate → navegar a una URL
-- browser_snapshot → capturar snapshot de accesibilidad de la página actual
-- browser_click → hacer click en un elemento
-- browser_type → escribir texto en un campo
-- browser_wait_for → esperar a que aparezca texto o pasen segundos
+Todo debe generarse dinámicamente.
 
-### video-engine CLI
-El framework se ejecuta con estos comandos:
+---
 
-# Ejecutar un YAML existente → MP4
-node packages/cli/dist/index.js generate -c output/workflow.yml -v
+## Configuración sobre Código
 
-# Generar YAML desde URL + prompt (páginas públicas)
-node packages/cli/dist/index.js generate-from-prompt \
-  --url https://miapp.com \
-  --prompt "click en el botón de registro"
+El comportamiento debe configurarse mediante:
 
-## Flujo de trabajo para grabar videos
+* `.env`
+* `kiro.config.ts`
+* Script en lenguaje natural
+* Configuración del proyecto
 
-### CASO 1: Página pública (sin login)
-1. Usar browser_navigate para abrir la URL
-2. Usar browser_snapshot para ver qué hay en la página
-3. Generar el YAML con los selectores reales del snapshot
-4. Ejecutar: node packages/cli/dist/index.js generate -c output/workflow.yml -v
+Nunca mediante valores específicos de una máquina.
 
-### CASO 2: Página autenticada (con login)
-1. Usar browser_navigate para abrir la URL de login
-2. Usar browser_snapshot para ver el formulario de login
-3. Usar browser_type y browser_click para hacer login
-4. Usar browser_snapshot para ver la página resultante
-5. Navegar a cada sección necesaria e inspeccionar con browser_snapshot
-6. Con todos los selectores reales, generar el YAML completo
-7. Ejecutar: node packages/cli/dist/index.js generate -c output/workflow.yml -v
+---
 
-### CASO 3: Flujo con múltiples secciones
-1. Inspeccionar cada sección por separado con Playwright MCP
-2. Generar un YAML con múltiples scenes
-3. Usar persistentContext: true para mantener la sesión entre scenes
-4. Ejecutar todo en un solo comando generate
+## Separación de Responsabilidades
 
-## Reglas de trabajo de KIRO
+Cada paquete tiene una única responsabilidad.
 
-### SIEMPRE antes de generar un YAML:
-- Inspecciona la página con browser_snapshot
-- Usa los selectores exactos del snapshot, nunca los adivines
-- Si hay login, haz el login con Playwright MCP primero
-- Verifica que los selectores existen antes de escribirlos en el YAML
+Ningún componente debe asumir responsabilidades de otro.
 
-### NUNCA:
-- Adivines selectores sin haber inspeccionado la página
-- Pongas credenciales en archivos YAML o de código
-- Modifiques el core, config, discovery, engine-ffmpeg sin instrucción explícita
-- Agregues features nuevas sin que se pidan
-- Refactorices código que no está en la tarea actual
+---
 
-### Formato del YAML obligatorio para flujos con login:
-playwright:
-  persistentContext: true
-  slowMo: 400
-  highlightClicks: true
-  showCursor: true
-  viewport:
-    width: 390
-    height: 844
-    isMobile: true
-    hasTouch: true
+# Responsabilidades por Paquete
 
-### Selectores — usar siempre en este orden de preferencia:
-1. role=button[name="Texto"] → más estable
-2. role=textbox[name="Label"] → para inputs
-3. role=link[name="Texto"] → para links
-4. text=Texto visible → fallback
-5. CSS (#id, .clase) → último recurso
+## discovery
 
-## Estructura del proyecto
+Responsable de:
 
+* Inspeccionar páginas
+* Obtener estructura de la interfaz
+* Generar PageMaps
+* Proveer contexto reproducible
+
+No genera workflows.
+
+No ejecuta workflows.
+
+---
+
+## planner
+
+Responsable de:
+
+* Interpretar la intención del usuario
+* Convertir scripts en PlanSteps
+* Determinar qué quiere hacer el usuario
+
+No inspecciona páginas.
+
+No ejecuta workflows.
+
+---
+
+## workflow-generator
+
+Responsable de:
+
+* Convertir PlanSteps en YAML
+* Aplicar convenciones del framework
+* Generar workflows ejecutables
+
+No ejecuta acciones.
+
+---
+
+## engine-playwright
+
+Responsable de:
+
+* Automatización del navegador
+* Ejecución de acciones
+* Grabación de video
+* Captura de screenshots
+
+No realiza planificación.
+
+---
+
+## engine-ffmpeg
+
+Responsable de:
+
+* Unir videos
+* Aplicar frames
+* Sincronizar audio
+* Composición final del video
+
+No interactúa con navegadores.
+
+---
+
+## engine-polly
+
+Responsable de:
+
+* Generar voz
+* Sintetizar narración
+* Producir audio
+
+No modifica workflows.
+
+---
+
+## core
+
+Responsable de:
+
+* Orquestación del pipeline
+* API pública
+* Coordinación entre componentes
+* Ciclo de vida de ejecución
+
+No debe contener lógica de negocio.
+
+---
+
+## cli
+
+Responsable de:
+
+* Interacción con el usuario
+* Comandos
+* Entrada y salida
+
+Debe mantenerse simple.
+
+---
+
+# Estrategia de Generación de Video
+
+## Objetivo
+
+Mantener el equilibrio entre:
+
+* Escalabilidad
+* Automatización
+* Confiabilidad
+* Velocidad de desarrollo
+
+---
+
+## Modo 1 — Autónomo (Predeterminado)
+
+### Flujo Principal
+
+```text
+Discovery
+↓
+Análisis
+↓
+Evaluación de confianza
+↓
+Generación de YAML
+↓
+Generate
+↓
+Verificación de video
+↓
+Polly
+↓
+FFmpeg
+```
+
+---
+
+### Cuándo usarlo
+
+* Página pública
+* Discovery obtuvo suficiente información
+* Navegación conocida
+* Selectores identificados
+* No requiere autenticación
+* El flujo es reproducible
+
+---
+
+### Motivo
+
+Es el flujo que puede escalar a:
+
+* APIs
+* SaaS
+* CI/CD
+* Generación masiva
+* Automatización programada
+* Workflows completamente autónomos
+
+Discovery es siempre la opción preferida.
+
+---
+
+## Modo 2 — Recuperación con MCP
+
+### Flujo Alternativo
+
+```text
+Discovery
+↓
+Análisis
+↓
+Evaluación de confianza
+
+Si la confianza es BAJA:
+
+↓
+Playwright MCP
+↓
+Navegación
+↓
+Login (si aplica)
+↓
+Snapshot
+↓
+Validar navegación
+↓
+Actualizar selectores
+↓
+Generar YAML
+↓
+Generate
+↓
+Verificar video
+```
+
+---
+
+### Cuándo usarlo
+
+* Se requiere login
+* Discovery es insuficiente
+* Faltan selectores críticos
+* Hay múltiples candidatos
+* La navegación es ambigua
+* Hay contenido dinámico complejo
+* Discovery no puede determinar el flujo correcto
+* El destino de un click es desconocido
+* Algún paso requiere adivinar información
+
+---
+
+### Motivo
+
+MCP es la fuente de verdad para:
+
+* Autenticación
+* Verificación
+* Recuperación
+* Depuración
+* Navegación compleja
+* Aplicaciones dinámicas
+
+---
+
+# Evaluación de Confianza
+
+## Confianza Alta (HIGH)
+
+Solo cuando:
+
+* Los elementos necesarios existen
+* La navegación es conocida
+* Los selectores son estables
+* Discovery aporta suficiente contexto
+* Los destinos son conocidos
+* Las transiciones son conocidas
+* No existen suposiciones
+
+---
+
+## Confianza Baja (LOW)
+
+Cuando:
+
+* Falta información crítica
+* Hay navegación desconocida
+* Existen varios candidatos
+* El login bloquea Discovery
+* El comportamiento dinámico es incierto
+* Se desconoce el destino de un selector
+* Discovery es parcial
+* Alguna acción requiere asumir información
+
+---
+
+## Regla Obligatoria
+
+Si algún paso requiere una suposición:
+
+```text
+Confianza = LOW
+```
+
+y debe utilizarse MCP.
+
+---
+
+# Reglas de Decisión
+
+1. Siempre intentar Discovery primero.
+2. Evaluar confianza después de Discovery.
+3. Verificar que el workflow pueda construirse sin suposiciones.
+4. Escalar a MCP únicamente cuando la confianza sea LOW.
+5. MCP se convierte en la fuente de verdad.
+6. Generar el workflow con la información más confiable disponible.
+7. Verificar el video antes de reportar éxito.
+
+---
+
+# Regla Operativa 80/20
+
+Objetivo:
+
+* 80% Discovery
+* 20% MCP
+
+MCP es una herramienta de recuperación y validación.
+
+No es el mecanismo principal.
+
+---
+
+# Verificación de Video
+
+Un video no se considera exitoso hasta ser validado.
+
+## Checklist
+
+Después de cada ejecución:
+
+* Verificar que el MP4 exista.
+* Verificar tamaño razonable.
+* Extraer al menos un frame.
+* Verificar que exista contenido visible.
+* Confirmar que el video no esté en blanco.
+
+Solo entonces reportar éxito.
+
+---
+
+## Si la validación falla
+
+* No reportar éxito.
+
+* Diagnosticar el problema.
+
+* Determinar si pertenece a:
+
+  * Workflow
+  * Engine Playwright
+  * FFmpeg
+  * Frame Overlay
+  * Narración
+
+* Resolver antes de continuar.
+
+---
+
+# Reglas de Generación YAML
+
+## Acciones Permitidas
+
+Las únicas acciones válidas son:
+
+* goto
+* click
+* fill
+* wait
+* scroll
+* hover
+* press
+* screenshot
+* waitForUrl
+* waitForSelector
+
+No generar acciones fuera de esta lista.
+
+---
+
+## Prioridad de Selectores
+
+Orden preferido:
+
+1. role=button[name="Texto"]
+2. role=textbox[name="Label"]
+3. role=link[name="Texto"]
+4. text=Texto visible
+5. CSS
+
+Nunca adivinar selectores.
+
+Siempre verificar su existencia.
+
+---
+
+# Reglas de Frames
+
+## Comportamiento Predeterminado
+
+Por defecto:
+
+* No aplicar frame.
+* No modificar viewport.
+
+Usar resolución estándar de escritorio.
+
+---
+
+## Cuando se Solicita un Frame
+
+Agregar:
+
+```yaml
+frame: "nombre-frame"
+```
+
+y configurar el viewport correspondiente.
+
+---
+
+## plantilla-iphone
+
+Viewport obligatorio:
+
+```yaml
+viewport:
+  width: 393
+  height: 852
+```
+
+Siempre que se utilice:
+
+```yaml
+frame: "plantilla-iphone"
+```
+
+Esto garantiza alineación correcta con el PNG.
+
+---
+
+## Otros Frames
+
+Consultar:
+
+```text
+frames/frames.json
+```
+
+y utilizar las dimensiones correspondientes.
+
+---
+
+# Estrategia de Narración
+
+## Objetivo
+
+Mantener KIRO completamente autónomo.
+
+El usuario nunca debería escribir:
+
+* Narraciones
+* Textos para Polly
+* Guiones técnicos
+
+El usuario solo proporciona:
+
+* URL
+* Script
+
+---
+
+## Dirección Actual
+
+```text
+Workflow
+↓
+Generador de Narración
+↓
+Polly
+↓
+Audio
+↓
+FFmpeg
+↓
+MP4 Final
+```
+
+---
+
+## Reglas
+
+Cuando la narración esté habilitada:
+
+* Debe generarse automáticamente.
+* Debe generarse por escenas.
+* Polly recibe texto y devuelve audio.
+* Polly debe permanecer desacoplado del resto del sistema.
+
+---
+
+## Evolución Futura
+
+La narración podrá utilizar:
+
+* Contexto del planner
+* Información de Discovery
+* Modelos LLM
+
+sin cambiar la arquitectura base.
+
+---
+
+# Reglas de Ingeniería
+
+## Nunca
+
+* Hardcodear credenciales
+* Hardcodear URLs de clientes
+* Hardcodear selectores de clientes
+* Guardar secretos en workflows
+* Agregar lógica específica de clientes
+* Refactorizar código no relacionado
+* Agregar funcionalidades sin aprobación
+
+---
+
+## Siempre
+
+* Mantener responsabilidades separadas
+* Preferir configuración sobre código
+* Validar suposiciones
+* Mantener portabilidad
+* Generar workflows reproducibles
+
+---
+
+# Estructura del Proyecto
+
+```text
 packages/
-├── cli/                 # Comandos: generate, record, generate-from-prompt
-├── core/                # Clase Kiro, Pipeline orquestador
-├── config/              # Schema y validación de YAML
-├── discovery/           # Inspección automática de páginas (programático)
-├── planner/             # RuleBasedPlanner + LLMPlanner
-├── workflow-generator/  # PlanSteps → YAML
-├── engine-playwright/   # Grabación de video con Playwright
-├── engine-ffmpeg/       # Concatenación y frame overlay
-├── engine-polly/        # Narración con AWS Polly (fase 2)
-└── plugin-api/          # Contratos para extensiones
+├── cli/
+├── core/
+├── config/
+├── discovery/
+├── planner/
+├── workflow-generator/
+├── engine-playwright/
+├── engine-ffmpeg/
+├── engine-polly/
+└── plugin-api/
 
-frames/                  # Plantillas PNG de dispositivos
-├── plantilla-iphone.png # Plantilla iPhone con fondo azul
-└── frames.json          # Coordenadas de cada plantilla
+frames/
+├── plantilla-iphone.png
+└── frames.json
 
-output/                  # Videos y YAMLs generados (no subir al repo)
-.browser-profile/        # Perfil del browser con sesiones (no subir al repo)
+output/
 
-## Roadmap
+.browser-profile/
+```
 
-### Completado 
-- Discovery automático de páginas públicas
-- Planner con RuleBasedPlanner y LLMPlanner
-- Engine Playwright con grabación, cursor, highlights
-- Engine FFmpeg con concatenación y frame overlay
-- Plantilla iPhone con fondo azul
-- Comando generate, record, generate-from-prompt
-- Clase Kiro con método record()
-- FFmpeg auto-instalado via @ffmpeg-installer
-- Sesión persistente con launchPersistentContext
+---
 
-### Siguiente 
-- Narración con AWS Polly
-- Comando merge para unir videos
-- waitForNavigation / waitForSelector
-- Variables en YAML ({{variable}})
-- Modo dry-run
+# Roadmap
+
+## Completado
+
+* Discovery
+* Planner
+* Workflow Generator
+* Playwright Engine
+* FFmpeg Engine
+* Frame Overlay
+* Generate
+* Record
+* Generate From Prompt
+* Persistent Context
+* Smart Waits
+* Verificación de Video
+
+---
+
+## Próximamente
+
+* Integración Polly
+* Narración Automática
+* Detección Inteligente de Sesión
+* Merge de Videos
+* Variables YAML
+* Dry Run
+* Validaciones Avanzadas
+* Plantillas de Workflow
+* Generación Masiva
+
+---
+
+# Principio Rector
+
+No reemplazar Discovery con Playwright MCP.
+
+Discovery es el mecanismo principal y escalable.
+
+Playwright MCP existe para recuperar, verificar y resolver escenarios donde Discovery no tiene suficiente confianza.
+
+Nunca adivinar:
+
+* Selectores
+* URLs
+* Destinos
+* Navegaciones
+* Acciones
+
+La verificación es obligatoria antes de reportar éxito.

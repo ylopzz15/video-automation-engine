@@ -64,6 +64,24 @@ const screenshotActionSchema = z.object({
   selector: z.string().optional(),
 });
 
+const waitForUrlActionSchema = z.object({
+  action: z.literal('waitForUrl'),
+  /** Substring que debe contener la URL para considerar que la navegación completó */
+  contains: z.string(),
+  /** Timeout máximo en ms (default: 15000) */
+  timeout: z.number().positive().default(15000),
+});
+
+const waitForSelectorActionSchema = z.object({
+  action: z.literal('waitForSelector'),
+  /** Selector que debe ser visible para continuar */
+  selector: z.string(),
+  /** Timeout máximo en ms (default: 15000) */
+  timeout: z.number().positive().default(15000),
+  /** Esperar a que desaparezca en vez de aparecer */
+  hidden: z.boolean().default(false),
+});
+
 export const sceneActionSchema = z.discriminatedUnion('action', [
   gotoActionSchema,
   clickActionSchema,
@@ -73,6 +91,8 @@ export const sceneActionSchema = z.discriminatedUnion('action', [
   hoverActionSchema,
   pressActionSchema,
   screenshotActionSchema,
+  waitForUrlActionSchema,
+  waitForSelectorActionSchema,
 ]);
 
 // --- Escena ---
@@ -156,6 +176,8 @@ export type ScrollAction = z.output<typeof scrollActionSchema>;
 export type HoverAction = z.output<typeof hoverActionSchema>;
 export type PressAction = z.output<typeof pressActionSchema>;
 export type ScreenshotAction = z.output<typeof screenshotActionSchema>;
+export type WaitForUrlAction = z.output<typeof waitForUrlActionSchema>;
+export type WaitForSelectorAction = z.output<typeof waitForSelectorActionSchema>;
 export type SceneAction = z.output<typeof sceneActionSchema>;
 export type SceneConfig = z.output<typeof sceneSchema>;
 export type VoiceConfig = z.output<typeof voiceSchema>;
